@@ -1,0 +1,79 @@
+variable "region" {
+    type = string
+}
+
+variable "vpcid" {
+    type = string
+}
+#module "vpc" {
+#  source = "../vpc"
+#  region = var.region
+#}
+
+resource "aws_db_subnet_group" "assdb_subnet_group" {
+  name = "assdb-subnet-group"
+  subnet_ids = [aws_subnet.subnet_a.id, aws_subnet.subnet_b.id]
+
+  tags = {
+    Name = "Ass DB Subnet Group"
+  }
+}
+
+resource "aws_db_instance" "default" {
+  allocated_storage    = 20
+  storage_type         = "gp2"
+  engine               = "postgresql"
+  engine_version       = "15.5-R2"
+  instance_class       = "db.t2.micro"
+  identifier           = "assdb"
+  username             = "postgres"
+  password             = "postgres"
+  publicly_accessible  = true 
+
+  // Specify the VPC Configuration
+  vpc_security_group_ids = [aws_security_group.rds_sg.id]
+  db_subnet_group_name  = aws_db_subnet_group.assdb_subnet_group.name
+
+  skip_final_snapshot = true
+}
+
+resource "aws_subnet" "subnet_a" {
+  vpc_id     =  var.vpcid
+  // Define the CIDR block and other attributes
+}
+
+resource "aws_subnet" "subnet_b" {
+  vpc_id     = var.vpcid
+  // Define the CIDR block and other attributes
+}
+
+resource "aws_security_group" "rds_sg" {
+  vpc_id = var.vpcid
+  
+  // Allow incoming PostgreSQL traffic from anywhere
+  ingress {
+    from_port   = 5432
+    to_port     = 5432
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]  // Allow from anywhere, restrict as per your requirement
+  }
+
+  // You may need to define other ingress/egress rules as per your requirements
+}
+
+resource "local_file" "configmap" {
+  filename = "${path.module}/../../statefulset_generated.yaml"
+  content  = templatefile("${path.module}/statefulset2.yaml", {
+    rdsdns = local.db_dns_name, 
+  })
+}
+
+locals {
+  
+   db_endpoint = aws_db_instance.default.endpoint
+   db_parts = split(":", local.db_endpoint)
+   db_dns_name = local.db_parts[0]
+   
+}
+
+

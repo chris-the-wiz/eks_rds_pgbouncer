@@ -1,0 +1,95 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: configmap
+data:
+  rdsdns: RDS_DNS 
+
+---
+
+
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: k8s-admin
+---
+kind: Role
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  name: k8s-admin-role
+rules:
+- apiGroups: ["", "extensions", "apps", "networking.k8s.io"]
+  resources: ["deployments", "replicasets", "pods", "services", "ingresses", "secrets", "configmaps"]
+  verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+- apiGroups: [""]
+  resources: ["namespaces"]
+  verbs: ["get"]  
+---
+kind: RoleBinding
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  name: k8s-admin-role-binding
+subjects:
+- kind: ServiceAccount
+  name: k8s-admin
+  apiGroup: ""
+roleRef:
+  kind: Role
+  name: k8s-admin-role
+  apiGroup: ""
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: my-ssh-svc
+  labels:
+    app: ssh
+spec:
+  type: LoadBalancer
+  ports:
+  - port: 7432
+    name: pgbouncer
+  - port: 22
+    name: ssh
+  selector:
+    app: ssh
+
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: my-ssh
+  labels:
+    app: ssh
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: ssh
+  template:
+    metadata:
+      labels:
+        app: ssh
+    spec:
+      serviceAccountName: k8s-admin
+      containers:
+      - name: ssh
+        #image: lscr.io/linuxserver/openssh-server:latest
+        image: 730335256432.dkr.ecr.eu-west-1.amazonaws.com/bounce:latest
+        ports:
+        - containerPort: 22
+        - containerPort: 7432
+        env:
+        - name: DB_RDS
+          value: "host=assdb.czma2smachci.eu-west-1.rds.amazonaws.com port=5432 dbname=postgres"
+        #- name: RDS_ADDRESS
+        #  value: assdb.czma2smachci.eu-west-1.rds.amazonaws.com   
+        - name: USER_NAME
+          value: "root"
+        - name: USER_PASSWORD
+          value: "password"
+        - name: PASSWORD_ACCESS
+          value: "true"
+        - name: SUDO_ACCESS
+          value: "true"          
